@@ -563,7 +563,7 @@ const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
                     )}
                     {generatedPost.content.hashtags && (
                       <div className="mt-4 flex flex-wrap gap-1">
-                        {generatedPost.content.hashtags.map((index, tag) => (
+                        {generatedPost.content.hashtags.map((index:any, tag:any) => (
                           <span key={index} className="text-blue-600 text-sm">{tag}</span>
                         ))}
                       </div>
