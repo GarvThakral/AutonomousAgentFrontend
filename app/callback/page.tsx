@@ -36,8 +36,8 @@ function Callback(){
 
  const handleTokenExchange = async (code:any) => {
    try {
-    
-    const response = await axios.post(`${API_URL}connectLinkedin`, {
+    console.log(`${process.env.NEXT_PUBLIC_API_URL}connectLinkedin`)
+    const response = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}connectLinkedin`, {
        code: code
      }, {
        headers: { 
