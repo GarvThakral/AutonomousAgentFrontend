@@ -36,7 +36,7 @@ function Callback(){
 
  const handleTokenExchange = async (code:any) => {
    try {
-    console.log(`https://linkedinautomationagent-1.onrender.com/connectLinkedin`)
+    console.log(`${process.env.NEXT_PUBLIC_API_URL}connectLinkedin`)
     const response = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}connectLinkedin`, {
        code: code
      }, {
