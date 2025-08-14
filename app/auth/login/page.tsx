@@ -42,7 +42,7 @@ export default function LoginPage() {
         password: password,
       });
       console.log(response.data)
-      localStorage.setItem("user_session", response.data)
+      localStorage.setItem("user_session", response.data.user_id)
 
       toast({
         title: "Login successful",
