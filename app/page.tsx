@@ -191,7 +191,7 @@ const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
   const connectLinkedIn = async () => {
     setIsConnectingLinkedIn(true)
     
-    const REDIRECT_URI = "http://localhost:3000/callback" // Change this!
+    const REDIRECT_URI = process.env.NEXT_PUBLIC_REDIRECT_URI 
     const CLIENT_ID = "86hk0lsdjculis"
     
     const scopes = [
