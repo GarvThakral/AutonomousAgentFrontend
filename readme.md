@@ -13,14 +13,12 @@ Frontend & Backend Setup Guide
 
 ### 1️⃣ Clone and Enter the Project Directory
 
-git clone <your-frontend-repo-url>
-cd <your-frontend-folder>
+git clone https://github.com/GarvThakral/AutonomousAgentFrontend
+cd AutonomousAgentFrontend
 
 
 ### 2️⃣ Install Dependencies
-
 npm install --force
-
 
 ### 3️⃣ Run the Development Server
 
