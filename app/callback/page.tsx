@@ -3,10 +3,18 @@ import { useSearchParams } from "next/navigation";
 import { useEffect } from "react";
 import axios from 'axios';
 import { useRouter } from "next/navigation";
+import { Suspense } from 'react';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL
+export default function CallbackPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <Callback />
+    </Suspense>
+  );
+}
 
-export default function Callback(){
+function Callback(){
  const searchParams = useSearchParams()
  const router = useRouter()
  useEffect(() => {
@@ -26,7 +34,7 @@ export default function Callback(){
    
  }, [searchParams])
 
- const handleTokenExchange = async (code) => {
+ const handleTokenExchange = async (code:any) => {
    try {
     
     const response = await axios.post(`${API_URL}connectLinkedin`, {
