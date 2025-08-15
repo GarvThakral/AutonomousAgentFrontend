@@ -293,7 +293,7 @@ const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!accessToken) {
     toast({
       title: "No access token",
-      description: "Please generate a LinkedIn access token first.",
+      description: "Please generate a LinkedIn access token first. From the button above",
       variant: "destructive",
     });
     return;
@@ -436,7 +436,7 @@ const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
                 <Label htmlFor="content-requirements">Content Requirements</Label>
                 <Textarea
                   id="content-requirements"
-                  placeholder="Describe what kind of content you want to generate..."
+                  placeholder="Describe the kind of content you want to generate..."
                   value={contentRequirements}
                   onChange={(e) => setContentRequirements(e.target.value)}
                   className="min-h-[100px]"
