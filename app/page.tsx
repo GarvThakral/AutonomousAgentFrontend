@@ -56,9 +56,10 @@ export default function LinkedInAIAgent() {
         setIsLinkedInConnected(true)
       }
 
-      const existingToken = localStorage.getItem("linkedin_access_token")
+      const existingToken = localStorage.getItem("access_token")
       if (existingToken) {
         setAccessToken(existingToken)
+        
       }
     } catch (error) {
       router.push("/auth/login")
@@ -67,7 +68,7 @@ export default function LinkedInAIAgent() {
 
   const handleLogout = () => {
     localStorage.removeItem("user_session")
-    localStorage.removeItem("linkedin_access_token")
+    localStorage.removeItem("access_token")
     localStorage.removeItem("linkedin_connected")
     router.push("/auth/login")
   }
@@ -202,27 +203,7 @@ export default function LinkedInAIAgent() {
     window.location.href = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=${scopes}&state=random123`
   }
 
-  const generateAccessToken = async () => {
-    if (!isLinkedInConnected) {
-      toast({
-        title: "LinkedIn not connected",
-        description: "Please connect your LinkedIn account first.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    const mockToken = `linkedin_token_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-    localStorage.setItem("linkedin_access_token", mockToken)
-    setAccessToken(mockToken)
-    toast({
-      title: "Access token generated",
-      description: "LinkedIn access token has been saved to local storage.",
-      variant: "destructive",
-
-    })
-  }
-
+ 
   const generateContent = async () => {
     if (!csvFile) {
       toast({
