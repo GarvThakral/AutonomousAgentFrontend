@@ -21,10 +21,9 @@ import {
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
-import axios from 'axios'
+import axios from "axios"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL
-
 
 export default function LinkedInAIAgent() {
   const [user, setUser] = useState<any>(null)
@@ -57,7 +56,7 @@ export default function LinkedInAIAgent() {
         setIsLinkedInConnected(true)
       }
 
-      const existingToken = localStorage.getItem("access_token")
+      const existingToken = localStorage.getItem("linkedin_access_token")
       if (existingToken) {
         setAccessToken(existingToken)
       }
@@ -68,7 +67,7 @@ export default function LinkedInAIAgent() {
 
   const handleLogout = () => {
     localStorage.removeItem("user_session")
-    localStorage.removeItem("access_token")
+    localStorage.removeItem("linkedin_access_token")
     localStorage.removeItem("linkedin_connected")
     router.push("/auth/login")
   }
@@ -86,120 +85,118 @@ export default function LinkedInAIAgent() {
 
   const MAX_FILE_SIZE_MB = 2
 
-const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-  console.log("handleFileUpload triggered");
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    console.log("handleFileUpload triggered")
 
-  const file = event.target.files?.[0];
-  console.log("Selected file:", file);
+    const file = event.target.files?.[0]
+    console.log("Selected file:", file)
 
-  // get user_session and extract ID
-  const userSession = localStorage.getItem("user_session");
-  console.log("Raw user_session from localStorage:", userSession);
+    // get user_session and extract ID
+    const userSession = localStorage.getItem("user_session")
+    console.log("Raw user_session from localStorage:", userSession)
 
-  let userId = null;
-  if (userSession) {
+    let userId = null
+    if (userSession) {
+      try {
+        const parsed = JSON.parse(userSession)
+        console.log("Parsed user_session:", parsed)
+        userId = parsed
+        console.log("Extracted user_id:", userId)
+      } catch (e) {
+        console.error("Failed to parse user_session JSON:", e)
+      }
+    }
+
+    if (!userId) {
+      console.warn("No user_id found — stopping upload")
+      toast({
+        title: "User not logged in",
+        description: "Please log in before uploading a file.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!file) {
+      console.warn("No file selected")
+      return
+    }
+
+    // Check type
+    if (!(file.type === "text/csv" || file.name.endsWith(".csv"))) {
+      console.warn("Invalid file type:", file.type)
+      toast({
+        title: "Invalid file type",
+        description: "Please upload a CSV file.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Check size
+    const fileSizeMB = file.size / (1024 * 1024)
+    console.log(`File size: ${fileSizeMB.toFixed(2)} MB`)
+
+    if (fileSizeMB > MAX_FILE_SIZE_MB) {
+      toast({
+        title: "File too large",
+        description: `The file exceeds the ${MAX_FILE_SIZE_MB}MB limit.`,
+        variant: "destructive",
+      })
+      return
+    }
+
+    setCsvFile(file)
+
     try {
-      const parsed = JSON.parse(userSession);
-      console.log("Parsed user_session:", parsed);
-      userId = parsed;
-      console.log("Extracted user_id:", userId);
-    } catch (e) {
-      console.error("Failed to parse user_session JSON:", e);
+      console.log("Preparing FormData...")
+      const formData = new FormData()
+      formData.append("file", file)
+      formData.append("user_id", userId)
+
+      console.log("Sending upload request to:", `${process.env.NEXT_PUBLIC_API_URL}upload-csv`)
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}upload-csv`, {
+        method: "POST",
+        body: formData,
+      })
+
+      console.log("Upload response status:", response.status)
+
+      if (!response.ok) {
+        console.error("Upload failed:", response.statusText)
+        throw new Error(`Upload failed: ${response.statusText}`)
+      }
+
+      const data = await response.json()
+      console.log("Upload successful, backend response:", data)
+
+      toast({
+        title: "File uploaded successfully",
+        description: `${file.name} has been uploaded and processed.`,
+      })
+    } catch (error) {
+      console.error("Error during file upload:", error)
+      toast({
+        title: "Upload error",
+        description: "There was a problem uploading the file.",
+        variant: "destructive",
+      })
     }
   }
-
-  if (!userId) {
-    console.warn("No user_id found — stopping upload");
-    toast({
-      title: "User not logged in",
-      description: "Please log in before uploading a file.",
-      variant: "destructive",
-    });
-    return;
-  }
-
-  if (!file) {
-    console.warn("No file selected");
-    return;
-  }
-
-  // Check type
-  if (!(file.type === "text/csv" || file.name.endsWith(".csv"))) {
-    console.warn("Invalid file type:", file.type);
-    toast({
-      title: "Invalid file type",
-      description: "Please upload a CSV file.",
-      variant: "destructive",
-    });
-    return;
-  }
-
-  // Check size
-  const fileSizeMB = file.size / (1024 * 1024);
-  console.log(`File size: ${fileSizeMB.toFixed(2)} MB`);
-
-  if (fileSizeMB > MAX_FILE_SIZE_MB) {
-    toast({
-      title: "File too large",
-      description: `The file exceeds the ${MAX_FILE_SIZE_MB}MB limit.`,
-      variant: "destructive",
-    });
-    return;
-  }
-
-  setCsvFile(file);
-
-  try {
-    console.log("Preparing FormData...");
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("user_id", userId);
-
-    console.log("Sending upload request to:", `${process.env.NEXT_PUBLIC_API_URL}upload-csv`);
-
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}upload-csv`, {
-      method: "POST",
-      body: formData,
-    });
-
-    console.log("Upload response status:", response.status);
-
-    if (!response.ok) {
-      console.error("Upload failed:", response.statusText);
-      throw new Error(`Upload failed: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    console.log("Upload successful, backend response:", data);
-
-    toast({
-      title: "File uploaded successfully",
-      description: `${file.name} has been uploaded and processed.`,
-    });
-  } catch (error) {
-    console.error("Error during file upload:", error);
-    toast({
-      title: "Upload error",
-      description: "There was a problem uploading the file.",
-      variant: "destructive",
-    });
-  }
-};
-
-
 
   const connectLinkedIn = async () => {
     setIsConnectingLinkedIn(true)
-    
-    const REDIRECT_URI = process.env.NEXT_PUBLIC_REDIRECT_URI 
+
+    const REDIRECT_URI = "https://autonomous-agent-frontend.vercel.app/callback" // Change this!
     const CLIENT_ID = "86hk0lsdjculis"
-    
+
     const scopes = [
-      'profile',           // Basic profile info (name, photo, etc.) 
-      'email',            // Email address
-      'openid',           // OpenID Connect (for user identification)
-      'w_member_social'   // Post content
-    ].join('%20') 
+      "profile", // Basic profile info (name, photo, etc.)
+      "email", // Email address
+      "openid", // OpenID Connect (for user identification)
+      "w_member_social", // Post content
+    ].join("%20")
     // Immediately redirect - no setTimeout needed
     window.location.href = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=${scopes}&state=random123`
   }
@@ -224,10 +221,19 @@ const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
   }
 
   const generateContent = async () => {
-    if (!csvFile || !contentRequirements) {
+    if (!csvFile) {
       toast({
-        title: "Missing information",
-        description: "Please upload a CSV file and provide content requirements.",
+        title: "CSV not uploaded",
+        description: "Please upload your profile CSV before generating images and content.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!contentRequirements) {
+      toast({
+        title: "Add content requirements",
+        description: "Describe the content you want to generate to proceed.",
         variant: "destructive",
       })
       return
@@ -237,37 +243,34 @@ const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
 
     setTimeout(async () => {
       try {
-        const response = await axios.post(
-          `${API_URL}makepost`,
-          {
-            contentRequirements,
-            targetAudience,
-            postTone,
-          }
-        );
+        const response = await axios.post(`${API_URL}makepost`, {
+          contentRequirements,
+          targetAudience,
+          postTone,
+        })
         console.log(response.data)
         let slide = []
         slide = [...response.data.content_data.image_instructions]
         let content = []
         content = [...response.data.image_urls]
-        let slides = []
-        for(let i =0 ; i < content.length ;i++){
+        const slides = []
+        for (let i = 0; i < content.length; i++) {
           const obj = {
-            title:slide[i],
-            content:content[i]
+            title: slide[i],
+            content: content[i],
           }
           slides.push(obj)
         }
-        let hashString = response.data.content_data.hashtag_suggestions.join(' ')
+        const hashString = response.data.content_data.hashtag_suggestions.join(" ")
         console.log(hashString)
         const mockPost = {
           // type: Math.random() > 0.5 ? "carousel" : "article",
-          type:"carousel",
+          type: "carousel",
           content: {
             title: "🚀 The Future of AI in Personal Branding",
             text: `${response.data.content_data.content_draft} ${hashString}`,
-            slides:slides,
-            hashtags:response.data.hashtag_suggestions,
+            slides: slides,
+            hashtags: response.data.hashtag_suggestions,
             engagement: {
               likes: Math.floor(Math.random() * 500) + 50,
               comments: Math.floor(Math.random() * 50) + 5,
@@ -289,57 +292,54 @@ const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
   }
 
   const postToLinkedIn = async () => {
-    
     if (!accessToken) {
-    toast({
-      title: "No access token",
-      description: "Please generate a LinkedIn access token first. From the button above",
-      variant: "destructive",
-    });
-    return;
-  }
-
-  if (!generatedPost) {
-    toast({
-      title: "No content generated",
-      description: "Please generate content before posting.",
-      variant: "destructive",
-    });
-    return;
-  }
-  
-  try {
-    const payload = {
-      content_data: generatedPost.content,         
-      image_urls: generatedPost.content.slides
-        ? generatedPost.content.slides.map((slide: any) => slide.content)
-        : [],
-      post_type: "carousel",               
-      access_token: accessToken                    
-    };
-    
-    const response = await axios.post(`${API_URL}postcontent`, payload);
-    if (response.data.status === "success") {
       toast({
-        title: "Posted to LinkedIn!",
-        description: "Your content has been successfully published.",
-      });
-    } else {
-      toast({
-        title: "Posting failed",
-        description: "There was an error posting your content.",
+        title: "No access token",
+        description: "Please generate a LinkedIn access token first. From the button above",
         variant: "destructive",
-      });
+      })
+      return
+    }
+
+    if (!generatedPost) {
+      toast({
+        title: "No content generated",
+        description: "Please generate content before posting.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      const payload = {
+        content_data: generatedPost.content,
+        image_urls: generatedPost.content.slides ? generatedPost.content.slides.map((slide: any) => slide.content) : [],
+        post_type: "carousel",
+        access_token: accessToken,
+      }
+
+      const response = await axios.post(`${API_URL}postcontent`, payload)
+      if (response.data.status === "success") {
+        toast({
+          title: "Posted to LinkedIn!",
+          description: "Your content has been successfully published.",
+        })
+      } else {
+        toast({
+          title: "Posting failed",
+          description: "There was an error posting your content.",
+          variant: "destructive",
+        })
       }
     } catch (error) {
       toast({
         title: "Error",
         description: "Failed to post to LinkedIn.",
         variant: "destructive",
-      });
-      console.error(error);
+      })
+      console.error(error)
     }
-  };
+  }
 
   const nextSlide = () => {
     if (generatedPost?.content.slides) {
@@ -430,6 +430,11 @@ const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
                     <p className="text-xs text-gray-500 mt-1">Supported format: .csv</p>
                   </label>
                 </div>
+                <div className="text-right">
+                  <a href="#profile-csv-instructions" className="text-xs text-blue-600 hover:underline">
+                    How to export your profile CSV?
+                  </a>
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -465,11 +470,9 @@ const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
                     className="bg-black text-white placeholder:text-gray-400"
                   />
                 </div>
-
               </div>
 
               <div className="space-y-3">
-
                 <Button
                   onClick={generateContent}
                   className="w-full bg-blue-600 hover:bg-blue-700"
@@ -518,8 +521,7 @@ const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
                             <h4 className="text-lg font-semibold mb-2">
                               {generatedPost?.content.slides[currentSlide]?.title}
                             </h4>
-                            <img src = {`${generatedPost?.content.slides[currentSlide].content}`}>
-                            </img>
+                            <img src={`${generatedPost?.content.slides[currentSlide].content}`} alt="Carousel slide" />
                           </div>
 
                           <div className="absolute inset-y-0 left-2 flex items-center">
@@ -563,8 +565,10 @@ const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
                     )}
                     {generatedPost.content.hashtags && (
                       <div className="mt-4 flex flex-wrap gap-1">
-                        {generatedPost.content.hashtags.map((index:any, tag:any) => (
-                          <span key={index} className="text-blue-600 text-sm">{tag}</span>
+                        {generatedPost.content.hashtags.map((tag: any, index: number) => (
+                          <span key={index} className="text-blue-600 text-sm">
+                            #{tag}
+                          </span>
                         ))}
                       </div>
                     )}
@@ -593,6 +597,56 @@ const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
             </CardContent>
           </Card>
         </div>
+
+        <Card id="profile-csv-instructions" className="shadow-lg">
+          <CardHeader>
+            <CardTitle>How to generate your profile.csv (LinkedIn export)</CardTitle>
+            <CardDescription>
+              Follow these steps to export your profile data from LinkedIn and upload it here.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="rounded-md bg-blue-50 text-blue-900 p-3 text-sm">
+              Note: This app currently expects a CSV upload. If LinkedIn provides a JSON-only export for your profile,
+              use the “Download larger data archive” option which typically includes CSV files, then upload the CSV
+              here.
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="font-semibold">Open LinkedIn and request your data</h3>
+              <ol className="list-decimal list-inside space-y-1 text-gray-700">
+                <li>Open LinkedIn in your browser and log in.</li>
+                <li>Go to: Settings & Privacy → Data Privacy → Get a copy of your data.</li>
+                <li>Select "Download larger data archive" (recommended) or "Profile information" only.</li>
+                <li>Click Request archive and complete any verification steps.</li>
+                <li>LinkedIn will email you a download link (usually within 10 minutes).</li>
+                <li>Unzip the archive on your computer.</li>
+              </ol>
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="font-semibold">Upload your profile data to Influence OS</h3>
+              <p className="text-gray-700">From the extracted files, find:</p>
+              <ul className="list-disc list-inside space-y-1 text-gray-700">
+                <li>Profile.json (contains work history, skills, and about section)</li>
+              </ul>
+              <p className="text-gray-700">
+                Go to the Profile Upload section of our app. Drag and drop your exported file into the upload box. We
+                will parse and analyze:
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-gray-700">
+                <li>Work history</li>
+                <li>Skills</li>
+                <li>Interests</li>
+                <li>Summary/About text</li>
+              </ul>
+              <p className="text-gray-700">
+                Your data is processed locally on our server, stored securely, and only used for AI-driven post
+                generation.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   )
