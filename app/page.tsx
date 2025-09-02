@@ -174,6 +174,7 @@ export default function LinkedInAIAgent() {
       toast({
         title: "File uploaded successfully",
         description: `${file.name} has been uploaded and processed.`,
+        variant: "destructive",
       })
     } catch (error) {
       console.error("Error during file upload:", error)
@@ -217,6 +218,8 @@ export default function LinkedInAIAgent() {
     toast({
       title: "Access token generated",
       description: "LinkedIn access token has been saved to local storage.",
+      variant: "destructive",
+
     })
   }
 
@@ -283,6 +286,8 @@ export default function LinkedInAIAgent() {
         toast({
           title: "Content generated successfully",
           description: "Your LinkedIn post has been created!",
+        variant: "destructive",
+
         })
       } catch (error) {
         alert("Error generating content")
@@ -323,6 +328,8 @@ export default function LinkedInAIAgent() {
         toast({
           title: "Posted to LinkedIn!",
           description: "Your content has been successfully published.",
+        variant: "destructive",
+
         })
       } else {
         toast({
