@@ -190,7 +190,8 @@ export default function LinkedInAIAgent() {
   const connectLinkedIn = async () => {
     setIsConnectingLinkedIn(true)
 
-    const REDIRECT_URI = "https://autonomous-agent-frontend.vercel.app/callback" // Change this!
+    // const REDIRECT_URI = "https://autonomous-agent-frontend.vercel.app/callback" // Change this!
+    const REDIRECT_URI = "http://localhost:3000/callback" // Change this!
     const CLIENT_ID = "86hk0lsdjculis"
 
     const scopes = [
@@ -251,6 +252,8 @@ export default function LinkedInAIAgent() {
           // type: Math.random() > 0.5 ? "carousel" : "article",
           type: "carousel",
           content: {
+            name:`${response.data.name}`,
+            industry:`${response.data.industry}`,
             title: "🚀 The Future of AI in Personal Branding",
             text: `${response.data.content_data.content_draft} ${hashString}`,
             slides: slides,
@@ -494,8 +497,8 @@ export default function LinkedInAIAgent() {
                         AI
                       </div>
                       <div>
-                        <h3 className="font-semibold text-gray-900">Your Name</h3>
-                        <p className="text-sm text-gray-600">AI Content Creator • 1st</p>
+                        <h3 className="font-semibold text-gray-900">{generatedPost.content.name}</h3>
+                        <p className="text-sm text-gray-600">{generatedPost.content.industry}</p>
                         <p className="text-xs text-gray-500">2h • 🌍</p>
                       </div>
                     </div>
