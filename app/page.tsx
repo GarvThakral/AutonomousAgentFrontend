@@ -18,6 +18,7 @@ import {
   User,
   CheckCircle,
   AlertCircle,
+  Pen
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
@@ -344,6 +345,40 @@ export default function LinkedInAIAgent() {
     }
   }
 
+const regenerateImages = async () => {
+  try {
+    const response = await axios.post(`${API_URL}regenerateImages`, {
+      contentRequirements,
+      targetAudience,
+      postTone,
+      access_token: accessToken
+    });
+
+    const urls = response.data.urls || [];
+    const instr = response.data.image_instructions || [];
+
+    // map to the same shape you used originally: { title, content }
+    const newSlides = urls.map((url, i) => ({
+      title: instr[i] ?? `Slide ${i+1}`,
+      content: url
+    }));
+
+    // immutably update state (functional update to avoid stale closures)
+    setGeneratedPost(prev => ({
+      ...prev,
+      content: {
+        ...prev.content,
+        slides: newSlides
+      }
+    }));
+
+    console.log("Updated slides:", newSlides);
+  } catch (err) {
+    console.error("Regenerate failed:", err);
+  }
+};
+
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
       <div className="max-w-6xl mx-auto space-y-8">
@@ -496,7 +531,7 @@ export default function LinkedInAIAgent() {
                       <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-white font-semibold">
                         AI
                       </div>
-                      <div>
+                      <div className = {' w-[80%]'}>
                         <h3 className="font-semibold text-gray-900">{generatedPost.content.name}</h3>
                         <p className="text-sm text-gray-600">{generatedPost.content.industry}</p>
                         <p className="text-xs text-gray-500">2h • 🌍</p>
@@ -582,6 +617,14 @@ export default function LinkedInAIAgent() {
                   >
                     <ExternalLink className="h-4 w-4 mr-2" />
                     Post to LinkedIn
+                  </Button>
+                                    <Button
+                    onClick={regenerateImages}
+                    className="w-full bg-green-600 hover:bg-green-700"
+                    disabled={!accessToken}
+                  >
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Regenerate Images
                   </Button>
                 </div>
               )}
