@@ -33,7 +33,14 @@ export default function LinkedInAIAgent() {
   const [targetAudience, setTargetAudience] = useState("")
   const [postTone, setPostTone] = useState("")
   const [accessToken, setAccessToken] = useState("")
+  const [instagramPageToken, setInstagramPageToken] = useState("")
+  const [instagramUserId, setInstagramUserId] = useState("")
+  const [instagramCaptionOverride, setInstagramCaptionOverride] = useState("")
+  const [redditToken, setRedditToken] = useState("")
+  const [redditSubreddit, setRedditSubreddit] = useState("")
   const [isLinkedInConnected, setIsLinkedInConnected] = useState(false)
+  const [isInstagramConnecting, setIsInstagramConnecting] = useState(false)
+  const [isRedditConnecting, setIsRedditConnecting] = useState(false)
   const [generatedPost, setGeneratedPost] = useState<any>(null)
   const [currentSlide, setCurrentSlide] = useState(0)
   const [isGenerating, setIsGenerating] = useState(false)
@@ -60,7 +67,6 @@ export default function LinkedInAIAgent() {
       const existingToken = localStorage.getItem("access_token")
       if (existingToken) {
         setAccessToken(existingToken)
-        
       }
     } catch (error) {
       router.push("/auth/login")
@@ -205,17 +211,39 @@ export default function LinkedInAIAgent() {
     window.location.href = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=${scopes}&state=random123`
   }
 
- 
-  const generateContent = async () => {
-    if (!csvFile) {
+  const connectInstagram = async () => {
+    try {
+      setIsInstagramConnecting(true)
+      const { data } = await axios.get(`${API_URL}oauth/instagram/url`)
+      window.location.href = data.url
+    } catch (error) {
       toast({
-        title: "CSV not uploaded",
-        description: "Please upload your profile CSV before generating images and content.",
+        title: "Instagram connect failed",
+        description: "Check your API configuration and redirect URI.",
         variant: "destructive",
       })
-      return
+    } finally {
+      setIsInstagramConnecting(false)
     }
+  }
 
+  const connectReddit = async () => {
+    try {
+      setIsRedditConnecting(true)
+      const { data } = await axios.get(`${API_URL}oauth/reddit/url`)
+      window.location.href = data.url
+    } catch (error) {
+      toast({
+        title: "Reddit connect failed",
+        description: "Check your API configuration and redirect URI.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsRedditConnecting(false)
+    }
+  }
+
+  const generateContent = async () => {
     if (!contentRequirements) {
       toast({
         title: "Add content requirements",
@@ -363,20 +391,102 @@ const regenerateImages = async () => {
       content: url
     }));
 
-    // immutably update state (functional update to avoid stale closures)
-    setGeneratedPost(prev => ({
-      ...prev,
-      content: {
-        ...prev.content,
-        slides: newSlides
-      }
-    }));
+    setGeneratedPost(prev => {
+      if (!prev || !prev.content) return prev;
+      return {
+        ...prev,
+        content: {
+          ...prev.content,
+          slides: newSlides
+        }
+      };
+    });
 
     console.log("Updated slides:", newSlides);
   } catch (err) {
     console.error("Regenerate failed:", err);
   }
 };
+
+  const postToInstagram = async () => {
+    if (!instagramPageToken || !instagramUserId) {
+      toast({
+        title: "Instagram details needed",
+        description: "Provide Page token and Instagram user ID.",
+        variant: "destructive",
+      })
+      return
+    }
+    if (!generatedPost?.content?.slides?.length) {
+      toast({
+        title: "Generate content first",
+        description: "Create a post to publish.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const imageUrl = generatedPost.content.slides[0].content
+    const caption = instagramCaptionOverride || generatedPost.content.text
+
+    try {
+      await axios.post(`${API_URL}instagram/publish`, {
+        page_token: instagramPageToken,
+        ig_user_id: instagramUserId,
+        image_url: imageUrl,
+        caption,
+      })
+      toast({
+        title: "Posted to Instagram",
+        description: "Your image has been published.",
+      })
+    } catch (error) {
+      toast({
+        title: "Instagram publish failed",
+        description: "Verify tokens, IG user ID, and permissions.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const postToReddit = async () => {
+    if (!redditToken || !redditSubreddit) {
+      toast({
+        title: "Reddit details needed",
+        description: "Provide OAuth token and subreddit.",
+        variant: "destructive",
+      })
+      return
+    }
+    if (!generatedPost?.content) {
+      toast({
+        title: "Generate content first",
+        description: "Create a post to publish.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      await axios.post(`${API_URL}reddit/post`, {
+        access_token: redditToken,
+        subreddit: redditSubreddit,
+        title: generatedPost.content.title || "AI generated post",
+        kind: "self",
+        text: generatedPost.content.text,
+      })
+      toast({
+        title: "Posted to Reddit",
+        description: "Your post was submitted.",
+      })
+    } catch (error) {
+      toast({
+        title: "Reddit publish failed",
+        description: "Check token, subreddit, and scopes.",
+        variant: "destructive",
+      })
+    }
+  }
 
 
   return (
@@ -412,7 +522,7 @@ const regenerateImages = async () => {
                 <FileText className="h-5 w-5" />
                 Content Configuration
               </CardTitle>
-              <CardDescription>Upload your profile data and configure your content preferences</CardDescription>
+              <CardDescription>Configure your content preferences and optionally upload profile data</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-3">
@@ -444,10 +554,26 @@ const regenerateImages = async () => {
                     </Button>
                   )}
                 </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <Button
+                    onClick={connectInstagram}
+                    disabled={isInstagramConnecting}
+                    className="bg-pink-600 hover:bg-pink-700 w-full"
+                  >
+                    {isInstagramConnecting ? "Redirecting..." : "Connect Instagram"}
+                  </Button>
+                  <Button
+                    onClick={connectReddit}
+                    disabled={isRedditConnecting}
+                    className="bg-orange-600 hover:bg-orange-700 w-full"
+                  >
+                    {isRedditConnecting ? "Redirecting..." : "Connect Reddit"}
+                  </Button>
+                </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="csv-upload">Profile Data (CSV File)</Label>
+                <Label htmlFor="csv-upload">Profile Data (CSV File) — optional</Label>
                 <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
                   <input id="csv-upload" type="file" accept=".csv" onChange={handleFileUpload} className="hidden" />
                   <label htmlFor="csv-upload" className="cursor-pointer">
@@ -455,11 +581,6 @@ const regenerateImages = async () => {
                     <p className="text-sm text-gray-600">{csvFile ? csvFile.name : "Click to upload CSV file"}</p>
                     <p className="text-xs text-gray-500 mt-1">Supported format: .csv</p>
                   </label>
-                </div>
-                <div className="text-right">
-                  <a href="#profile-csv-instructions" className="text-xs text-blue-600 hover:underline">
-                    How to export your profile CSV?
-                  </a>
                 </div>
               </div>
 
@@ -618,7 +739,7 @@ const regenerateImages = async () => {
                     <ExternalLink className="h-4 w-4 mr-2" />
                     Post to LinkedIn
                   </Button>
-                                    <Button
+                  <Button
                     onClick={regenerateImages}
                     className="w-full bg-green-600 hover:bg-green-700"
                     disabled={!accessToken}
@@ -626,61 +747,71 @@ const regenerateImages = async () => {
                     <ExternalLink className="h-4 w-4 mr-2" />
                     Regenerate Images
                   </Button>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <Button
+                      onClick={postToInstagram}
+                      className="w-full bg-pink-600 hover:bg-pink-700"
+                      disabled={!generatedPost}
+                    >
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      Post to Instagram
+                    </Button>
+                    <Button
+                      onClick={postToReddit}
+                      className="w-full bg-orange-600 hover:bg-orange-700"
+                      disabled={!generatedPost}
+                    >
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      Post to Reddit
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>IG Page Token</Label>
+                      <Input
+                        placeholder="Paste page token"
+                        value={instagramPageToken}
+                        onChange={(e) => setInstagramPageToken(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>IG User ID</Label>
+                      <Input
+                        placeholder="Instagram Business Account ID"
+                        value={instagramUserId}
+                        onChange={(e) => setInstagramUserId(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>IG Caption (optional)</Label>
+                      <Textarea
+                        placeholder="Override caption..."
+                        value={instagramCaptionOverride}
+                        onChange={(e) => setInstagramCaptionOverride(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Reddit Token</Label>
+                      <Input
+                        placeholder="Paste Reddit OAuth token"
+                        value={redditToken}
+                        onChange={(e) => setRedditToken(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Subreddit</Label>
+                      <Input
+                        placeholder="e.g. marketing"
+                        value={redditSubreddit}
+                        onChange={(e) => setRedditSubreddit(e.target.value)}
+                      />
+                    </div>
+                  </div>
                 </div>
               )}
             </CardContent>
           </Card>
         </div>
-
-        <Card id="profile-csv-instructions" className="shadow-lg">
-          <CardHeader>
-            <CardTitle>How to generate your profile.csv (LinkedIn export)</CardTitle>
-            <CardDescription>
-              Follow these steps to export your profile data from LinkedIn and upload it here.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="rounded-md bg-blue-50 text-blue-900 p-3 text-sm">
-              Note: This app currently expects a CSV upload. If LinkedIn provides a JSON-only export for your profile,
-              use the “Download larger data archive” option which typically includes CSV files, then upload the CSV
-              here.
-            </div>
-
-            <div className="space-y-2">
-              <h3 className="font-semibold">Open LinkedIn and request your data</h3>
-              <ol className="list-decimal list-inside space-y-1 text-gray-700">
-                <li>Open LinkedIn in your browser and log in.</li>
-                <li>Go to: Settings & Privacy → Data Privacy → Get a copy of your data.</li>
-                <li>Select "Download larger data archive" (recommended) or "Profile information" only.</li>
-                <li>Click Request archive and complete any verification steps.</li>
-                <li>LinkedIn will email you a download link (usually within 10 minutes).</li>
-                <li>Unzip the archive on your computer.</li>
-              </ol>
-            </div>
-
-            <div className="space-y-2">
-              <h3 className="font-semibold">Upload your profile data to Influence OS</h3>
-              <p className="text-gray-700">From the extracted files, find:</p>
-              <ul className="list-disc list-inside space-y-1 text-gray-700">
-                <li>Profile.json (contains work history, skills, and about section)</li>
-              </ul>
-              <p className="text-gray-700">
-                Go to the Profile Upload section of our app. Drag and drop your exported file into the upload box. We
-                will parse and analyze:
-              </p>
-              <ul className="list-disc list-inside space-y-1 text-gray-700">
-                <li>Work history</li>
-                <li>Skills</li>
-                <li>Interests</li>
-                <li>Summary/About text</li>
-              </ul>
-              <p className="text-gray-700">
-                Your data is processed locally on our server, stored securely, and only used for AI-driven post
-                generation.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </div>
   )
