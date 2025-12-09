@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
-  Upload,
   FileText,
   ImageIcon,
   ChevronLeft,
@@ -28,17 +27,21 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL
 
 export default function LinkedInAIAgent() {
   const [user, setUser] = useState<any>(null)
-  const [csvFile, setCsvFile] = useState<File | null>(null)
   const [contentRequirements, setContentRequirements] = useState("")
   const [targetAudience, setTargetAudience] = useState("")
   const [postTone, setPostTone] = useState("")
+  const [contextText, setContextText] = useState("")
   const [accessToken, setAccessToken] = useState("")
   const [instagramPageToken, setInstagramPageToken] = useState("")
   const [instagramUserId, setInstagramUserId] = useState("")
   const [instagramCaptionOverride, setInstagramCaptionOverride] = useState("")
-  const [redditToken, setRedditToken] = useState("")
+  const [instagramPages, setInstagramPages] = useState<any[]>([])
+  const [selectedInstagramPage, setSelectedInstagramPage] = useState<any>(null)
+  const [instagramUserToken, setInstagramUserToken] = useState("")
   const [redditSubreddit, setRedditSubreddit] = useState("")
   const [isLinkedInConnected, setIsLinkedInConnected] = useState(false)
+  const [isInstagramConnected, setIsInstagramConnected] = useState(false)
+  const [isRedditConnected, setIsRedditConnected] = useState(false)
   const [isInstagramConnecting, setIsInstagramConnecting] = useState(false)
   const [isRedditConnecting, setIsRedditConnecting] = useState(false)
   const [generatedPost, setGeneratedPost] = useState<any>(null)
@@ -48,6 +51,31 @@ export default function LinkedInAIAgent() {
   const { toast } = useToast()
   const router = useRouter()
 
+  function fetchInstagramPages(userToken: string) {
+    if (!userToken) return
+    axios
+      .get("https://graph.facebook.com/v20.0/me/accounts", {
+        params: { access_token: userToken, fields: "name,access_token,instagram_business_account" },
+      })
+      .then(({ data }) => {
+        if (data?.data?.length) {
+          setInstagramPages(data.data)
+          setIsInstagramConnected(true)
+          toast({
+            title: "Pages loaded",
+            description: "Select a page to post.",
+          })
+        }
+      })
+      .catch(() => {
+        toast({
+          title: "Failed to fetch Instagram pages",
+          description: "Verify user access token and permissions.",
+          variant: "destructive",
+        })
+      })
+  }
+
   useEffect(() => {
     const userSession = localStorage.getItem("user_session")
     if (!userSession) {
@@ -56,22 +84,44 @@ export default function LinkedInAIAgent() {
     }
 
     try {
-      const userData = JSON.parse(userSession)
-      setUser(userData)
+      // older flow stores just the user_id; newer could store JSON
+      const parsed = JSON.parse(userSession)
+      const safeUser = typeof parsed === "object" ? parsed : { id: parsed, name: `User ${parsed}` }
+      setUser(safeUser)
+    } catch {
+      const safeUser = { id: userSession, name: `User ${userSession}` }
+      setUser(safeUser)
+    }
 
-      const linkedInConnection = localStorage.getItem("linkedin_connected")
-      if (linkedInConnection === "true") {
-        setIsLinkedInConnected(true)
-      }
+    const linkedInConnection = localStorage.getItem("linkedin_connected")
+    if (linkedInConnection === "true") {
+      setIsLinkedInConnected(true)
+    }
 
-      const existingToken = localStorage.getItem("access_token")
-      if (existingToken) {
-        setAccessToken(existingToken)
-      }
-    } catch (error) {
-      router.push("/auth/login")
+    const existingToken = localStorage.getItem("access_token")
+    if (existingToken) {
+      setAccessToken(existingToken)
+    }
+
+    const igUserToken = localStorage.getItem("instagram_user_token")
+    if (igUserToken) {
+      setInstagramUserToken(igUserToken)
+      fetchInstagramPages(igUserToken)
+      setIsInstagramConnected(true)
+    }
+
+    const redditFlag = localStorage.getItem("reddit_connected")
+    if (redditFlag === "true") {
+      setIsRedditConnected(true)
     }
   }, [router])
+
+  // Attempt to refetch pages when token changes (e.g., after callback)
+  useEffect(() => {
+    if (instagramUserToken && instagramPages.length === 0) {
+      fetchInstagramPages(instagramUserToken)
+    }
+  }, [instagramUserToken]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLogout = () => {
     localStorage.removeItem("user_session")
@@ -89,109 +139,6 @@ export default function LinkedInAIAgent() {
         </div>
       </div>
     )
-  }
-
-  const MAX_FILE_SIZE_MB = 2
-
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    console.log("handleFileUpload triggered")
-
-    const file = event.target.files?.[0]
-    console.log("Selected file:", file)
-
-    // get user_session and extract ID
-    const userSession = localStorage.getItem("user_session")
-    console.log("Raw user_session from localStorage:", userSession)
-
-    let userId = null
-    if (userSession) {
-      try {
-        const parsed = JSON.parse(userSession)
-        console.log("Parsed user_session:", parsed)
-        userId = parsed
-        console.log("Extracted user_id:", userId)
-      } catch (e) {
-        console.error("Failed to parse user_session JSON:", e)
-      }
-    }
-
-    if (!userId) {
-      console.warn("No user_id found — stopping upload")
-      toast({
-        title: "User not logged in",
-        description: "Please log in before uploading a file.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    if (!file) {
-      console.warn("No file selected")
-      return
-    }
-
-    // Check type
-    if (!(file.type === "text/csv" || file.name.endsWith(".csv"))) {
-      console.warn("Invalid file type:", file.type)
-      toast({
-        title: "Invalid file type",
-        description: "Please upload a CSV file.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    // Check size
-    const fileSizeMB = file.size / (1024 * 1024)
-    console.log(`File size: ${fileSizeMB.toFixed(2)} MB`)
-
-    if (fileSizeMB > MAX_FILE_SIZE_MB) {
-      toast({
-        title: "File too large",
-        description: `The file exceeds the ${MAX_FILE_SIZE_MB}MB limit.`,
-        variant: "destructive",
-      })
-      return
-    }
-
-    setCsvFile(file)
-
-    try {
-      console.log("Preparing FormData...")
-      const formData = new FormData()
-      formData.append("file", file)
-      formData.append("user_id", userId)
-
-      console.log("Sending upload request to:", `${process.env.NEXT_PUBLIC_API_URL}upload-csv`)
-
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}upload-csv`, {
-        method: "POST",
-        body: formData,
-      })
-
-      console.log("Upload response status:", response.status)
-
-      if (!response.ok) {
-        console.error("Upload failed:", response.statusText)
-        throw new Error(`Upload failed: ${response.statusText}`)
-      }
-
-      const data = await response.json()
-      console.log("Upload successful, backend response:", data)
-
-      toast({
-        title: "File uploaded successfully",
-        description: `${file.name} has been uploaded and processed.`,
-        variant: "destructive",
-      })
-    } catch (error) {
-      console.error("Error during file upload:", error)
-      toast({
-        title: "Upload error",
-        description: "There was a problem uploading the file.",
-        variant: "destructive",
-      })
-    }
   }
 
   const connectLinkedIn = async () => {
@@ -227,19 +174,20 @@ export default function LinkedInAIAgent() {
     }
   }
 
-  const connectReddit = async () => {
-    try {
-      setIsRedditConnecting(true)
-      const { data } = await axios.get(`${API_URL}oauth/reddit/url`)
-      window.location.href = data.url
-    } catch (error) {
+  const selectInstagramPage = (page: any) => {
+    setSelectedInstagramPage(page)
+    setInstagramPageToken(page.access_token)
+    const igBiz = page.instagram_business_account?.id
+    if (igBiz) {
+      setInstagramUserId(igBiz)
+      toast({ title: "Page selected", description: `${page.name} linked to IG ${igBiz}` })
+    } else {
+      setInstagramUserId("")
       toast({
-        title: "Reddit connect failed",
-        description: "Check your API configuration and redirect URI.",
+        title: "No Instagram account linked",
+        description: "Link this Page to an Instagram Business Account first.",
         variant: "destructive",
       })
-    } finally {
-      setIsRedditConnecting(false)
     }
   }
 
@@ -261,6 +209,7 @@ export default function LinkedInAIAgent() {
           contentRequirements,
           targetAudience,
           postTone,
+          context: contextText,
         })
         console.log(response.data)
         let slide = []
@@ -412,7 +361,9 @@ const regenerateImages = async () => {
     if (!instagramPageToken || !instagramUserId) {
       toast({
         title: "Instagram details needed",
-        description: "Provide Page token and Instagram user ID.",
+        description: instagramUserToken
+          ? "Load pages and select one to auto-fill token and IG user ID."
+          : "Connect Instagram, then load pages.",
         variant: "destructive",
       })
       return
@@ -450,10 +401,10 @@ const regenerateImages = async () => {
   }
 
   const postToReddit = async () => {
-    if (!redditToken || !redditSubreddit) {
+    if (!redditSubreddit) {
       toast({
         title: "Reddit details needed",
-        description: "Provide OAuth token and subreddit.",
+        description: "Provide a subreddit to post to.",
         variant: "destructive",
       })
       return
@@ -469,7 +420,6 @@ const regenerateImages = async () => {
 
     try {
       await axios.post(`${API_URL}reddit/post`, {
-        access_token: redditToken,
         subreddit: redditSubreddit,
         title: generatedPost.content.title || "AI generated post",
         kind: "self",
@@ -479,6 +429,8 @@ const regenerateImages = async () => {
         title: "Posted to Reddit",
         description: "Your post was submitted.",
       })
+      setIsRedditConnected(true)
+      localStorage.setItem("reddit_connected", "true")
     } catch (error) {
       toast({
         title: "Reddit publish failed",
@@ -494,14 +446,16 @@ const regenerateImages = async () => {
       <div className="max-w-6xl mx-auto space-y-8">
         <div className="flex justify-between items-center">
           <div className="text-center space-y-4">
-            <h1 className="text-4xl font-bold text-gray-900">INFLUENCE OS</h1>
-            <p className="text-xl text-gray-600">AI-Powered LinkedIn Content Generator</p>
+            <h1 className="text-4xl font-bold text-gray-900">Posting agent</h1>
+            <p className="text-xl text-gray-600">AI-Powered  Content Generator</p>
           </div>
 
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2 bg-white rounded-lg px-4 py-2 shadow-sm">
               <User className="h-4 w-4 text-gray-600" />
-              <span className="text-sm font-medium text-gray-900">{user.name || user.email}</span>
+              <span className="text-sm font-medium text-gray-900">
+                {user.name || user.email || `User ${user.id ?? ""}`}
+              </span>
             </div>
             <Button
               onClick={handleLogout}
@@ -555,33 +509,73 @@ const regenerateImages = async () => {
                   )}
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="flex items-center gap-2 bg-white border rounded p-2">
+                    {isInstagramConnected ? (
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                    ) : (
+                      <AlertCircle className="h-4 w-4 text-orange-500" />
+                    )}
+                    <span className="text-sm">
+                      {isInstagramConnected ? "Instagram Connected" : "Instagram Not Connected"}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 bg-white border rounded p-2">
+                    {isRedditConnected ? (
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                    ) : (
+                      <AlertCircle className="h-4 w-4 text-orange-500" />
+                    )}
+                    <span className="text-sm">
+                      {isRedditConnected ? "Reddit Connected" : "Reddit Not Connected"}
+                    </span>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <Button
                     onClick={connectInstagram}
                     disabled={isInstagramConnecting}
-                    className="bg-pink-600 hover:bg-pink-700 w-full"
+                    className="bg-blue-600 hover:bg-blue-700 w-full"
                   >
                     {isInstagramConnecting ? "Redirecting..." : "Connect Instagram"}
                   </Button>
-                  <Button
-                    onClick={connectReddit}
-                    disabled={isRedditConnecting}
-                    className="bg-orange-600 hover:bg-orange-700 w-full"
-                  >
-                    {isRedditConnecting ? "Redirecting..." : "Connect Reddit"}
-                  </Button>
+                  <div className="flex items-center gap-2 bg-white border rounded p-2 justify-center">
+                    {isRedditConnected ? (
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                    ) : (
+                      <AlertCircle className="h-4 w-4 text-orange-500" />
+                    )}
+                    <span className="text-sm">
+                      {isRedditConnected ? "Reddit Ready (env creds)" : "Reddit uses server creds"}
+                    </span>
+                  </div>
                 </div>
-              </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="csv-upload">Profile Data (CSV File) — optional</Label>
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
-                  <input id="csv-upload" type="file" accept=".csv" onChange={handleFileUpload} className="hidden" />
-                  <label htmlFor="csv-upload" className="cursor-pointer">
-                    <Upload className="h-8 w-8 mx-auto mb-2 text-gray-400" />
-                    <p className="text-sm text-gray-600">{csvFile ? csvFile.name : "Click to upload CSV file"}</p>
-                    <p className="text-xs text-gray-500 mt-1">Supported format: .csv</p>
-                  </label>
-                </div>
+                {instagramUserToken && instagramPages.length === 0 && (
+                  <div className="flex items-center justify-between p-3 bg-white border rounded">
+                    <p className="text-sm text-gray-700">Load pages linked to your Instagram account.</p>
+                    <Button size="sm" variant="outline" onClick={() => fetchInstagramPages(instagramUserToken)}>
+                      Load Pages
+                    </Button>
+                  </div>
+                )}
+
+                {instagramPages.length > 0 && (
+                  <div className="space-y-2">
+                    <Label>Select Instagram Page</Label>
+                    <div className="grid gap-2">
+                      {instagramPages.map((page) => (
+                        <Button
+                          key={page.id}
+                          variant={selectedInstagramPage?.id === page.id ? "default" : "outline"}
+                          className="justify-start"
+                          onClick={() => selectInstagramPage(page)}
+                        >
+                          {page.name}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -593,6 +587,62 @@ const regenerateImages = async () => {
                   onChange={(e) => setContentRequirements(e.target.value)}
                   className="min-h-[100px]"
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="context">Context</Label>
+                <Textarea
+                  id="context"
+                  placeholder="Add extra background, product story, or brand notes..."
+                  value={contextText}
+                  onChange={(e) => setContextText(e.target.value)}
+                  className="min-h-[120px]"
+                />
+                <div className="space-y-1">
+                  <p className="text-sm text-gray-700 font-medium">Load context</p>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        setContextText(
+                          "Noa is a creative strategist helping founders articulate vision and brand voice with concise, human storytelling."
+                        )
+                      }
+                    >
+                      Noa
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        setContextText(
+                          "Friendsin is a network for career builders to swap opportunities, share insights, and grow together through peer support."
+                        )
+                      }
+                    >
+                      Friendsin
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        setContextText(
+                          "Herth is a community-driven platform/website built to empower women entrepreneurs to grow, connect, and thrive.\nOur mission is to close the gap between ambition and opportunity by creating an ecosystem where women entrepreneurs can find the visibility they require to grow .\nWe believe every entrepreneur deserves visibility, support, and the tools to turn potential into performance.\nHerth transforms isolated business journeys into shared experiences through meaningful networks and practical mentorship.\nWe champion sustainability, inclusivity, and long-term growth, not just short-term visibility.\nBy combining storytelling, discovery, and analytics, Herth helps women showcase their work to the world with confidence.\nOur goal is to make entrepreneurship more accessible, authentic, and community-powered.\nEvery feature is designed to spark engagement — whether it’s sharing a story, finding collaborators, or joining skill exchanges.\nHerth stands for a culture of reciprocity: when one woman rises, the whole community grows stronger.\nWe are building a space where trust replaces competition, and genuine connection drives progress.\nThis isn’t just a network — it’s a movement towards balanced opportunity and collective growth.\nAt Herth, ambition meets empathy, innovation meets inclusivity, and business meets belonging.\nWe exist to remind every entrepreneur: you are not alone in your journey.\n"
+                        )
+                      }
+                    >
+                      Herth
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        setContextText(
+                          "Komal is a founder spotlighting practical marketing playbooks and community-led growth tips for early-stage teams."
+                        )
+                      }
+                    >
+                      Komal
+                    </Button>
+                  </div>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 gap-4">
@@ -751,7 +801,7 @@ const regenerateImages = async () => {
                     <Button
                       onClick={postToInstagram}
                       className="w-full bg-pink-600 hover:bg-pink-700"
-                      disabled={!generatedPost}
+                      disabled={!generatedPost || !instagramPageToken || !instagramUserId}
                     >
                       <ExternalLink className="h-4 w-4 mr-2" />
                       Post to Instagram
@@ -759,7 +809,7 @@ const regenerateImages = async () => {
                     <Button
                       onClick={postToReddit}
                       className="w-full bg-orange-600 hover:bg-orange-700"
-                      disabled={!generatedPost}
+                      disabled={!generatedPost || !redditSubreddit}
                     >
                       <ExternalLink className="h-4 w-4 mr-2" />
                       Post to Reddit
@@ -767,35 +817,11 @@ const regenerateImages = async () => {
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label>IG Page Token</Label>
-                      <Input
-                        placeholder="Paste page token"
-                        value={instagramPageToken}
-                        onChange={(e) => setInstagramPageToken(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>IG User ID</Label>
-                      <Input
-                        placeholder="Instagram Business Account ID"
-                        value={instagramUserId}
-                        onChange={(e) => setInstagramUserId(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
                       <Label>IG Caption (optional)</Label>
                       <Textarea
                         placeholder="Override caption..."
                         value={instagramCaptionOverride}
                         onChange={(e) => setInstagramCaptionOverride(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Reddit Token</Label>
-                      <Input
-                        placeholder="Paste Reddit OAuth token"
-                        value={redditToken}
-                        onChange={(e) => setRedditToken(e.target.value)}
                       />
                     </div>
                     <div className="space-y-2">
