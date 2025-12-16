@@ -87,7 +87,7 @@ export default function AutomatedPage() {
   }
 
   const connectLinkedIn = () => {
-    const REDIRECT_URI = "http://localhost:3000/callback"
+    const REDIRECT_URI = process.env.NEXT_PUBLIC_REDIRECT_URI || "http://localhost:3000/callback"
     const CLIENT_ID = "86hk0lsdjculis"
     const scopes = ["profile", "email", "openid", "w_member_social"].join("%20")
     window.location.href = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=${scopes}&state=random123`

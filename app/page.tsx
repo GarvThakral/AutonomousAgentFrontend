@@ -145,8 +145,7 @@ export default function LinkedInAIAgent() {
   const connectLinkedIn = async () => {
     setIsConnectingLinkedIn(true)
 
-    // const REDIRECT_URI = "https://autonomous-agent-frontend.vercel.app/callback" // Change this!
-    const REDIRECT_URI = "http://localhost:3000/callback" // Change this!
+    const REDIRECT_URI = process.env.NEXT_PUBLIC_REDIRECT_URI || "http://localhost:3000/callback"
     const CLIENT_ID = "86hk0lsdjculis"
 
     const scopes = [
