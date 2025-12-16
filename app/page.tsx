@@ -45,6 +45,7 @@ export default function LinkedInAIAgent() {
   const [isInstagramConnecting, setIsInstagramConnecting] = useState(false)
   const [isRedditConnecting, setIsRedditConnecting] = useState(false)
   const [generatedPost, setGeneratedPost] = useState<any>(null)
+  const [editedText, setEditedText] = useState("")
   const [currentSlide, setCurrentSlide] = useState(0)
   const [isGenerating, setIsGenerating] = useState(false)
   const [isConnectingLinkedIn, setIsConnectingLinkedIn] = useState(false)
@@ -244,6 +245,7 @@ export default function LinkedInAIAgent() {
           },
         }
         setGeneratedPost(mockPost)
+        setEditedText(mockPost.content.text)
         setIsGenerating(false)
         toast({
           title: "Content generated successfully",
@@ -278,12 +280,14 @@ export default function LinkedInAIAgent() {
     }
 
     try {
+      const finalText = editedText || generatedPost.content.text
       const payload = {
         content_data: generatedPost.content,
         image_urls: generatedPost.content.slides ? generatedPost.content.slides.map((slide: any) => slide.content) : [],
         post_type: "carousel",
         access_token: accessToken,
       }
+      payload.content_data.text = finalText
 
       const response = await axios.post(`${API_URL}postcontent`, payload)
       if (response.data.status === "success") {
@@ -378,7 +382,7 @@ const regenerateImages = async () => {
     }
 
     const imageUrl = generatedPost.content.slides[0].content
-    const caption = instagramCaptionOverride || generatedPost.content.text
+    const caption = instagramCaptionOverride || editedText || generatedPost.content.text
 
     try {
       await axios.post(`${API_URL}instagram/publish`, {
@@ -401,43 +405,11 @@ const regenerateImages = async () => {
   }
 
   const postToReddit = async () => {
-    if (!redditSubreddit) {
-      toast({
-        title: "Reddit details needed",
-        description: "Provide a subreddit to post to.",
-        variant: "destructive",
-      })
-      return
-    }
-    if (!generatedPost?.content) {
-      toast({
-        title: "Generate content first",
-        description: "Create a post to publish.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    try {
-      await axios.post(`${API_URL}reddit/post`, {
-        subreddit: redditSubreddit,
-        title: generatedPost.content.title || "AI generated post",
-        kind: "self",
-        text: generatedPost.content.text,
-      })
-      toast({
-        title: "Posted to Reddit",
-        description: "Your post was submitted.",
-      })
-      setIsRedditConnected(true)
-      localStorage.setItem("reddit_connected", "true")
-    } catch (error) {
-      toast({
-        title: "Reddit publish failed",
-        description: "Check token, subreddit, and scopes.",
-        variant: "destructive",
-      })
-    }
+    toast({
+      title: "Reddit disabled",
+      description: "Reddit posting is turned off for now.",
+      variant: "destructive",
+    })
   }
 
 
@@ -476,7 +448,7 @@ const regenerateImages = async () => {
                 <FileText className="h-5 w-5" />
                 Content Configuration
               </CardTitle>
-              <CardDescription>Configure your content preferences and optionally upload profile data</CardDescription>
+              <CardDescription>Craft, refine, and publish across LinkedIn, Instagram, and Reddit</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-3">
@@ -545,7 +517,7 @@ const regenerateImages = async () => {
                       <AlertCircle className="h-4 w-4 text-orange-500" />
                     )}
                     <span className="text-sm">
-                      {isRedditConnected ? "Reddit Ready (env creds)" : "Reddit uses server creds"}
+                      Reddit disabled
                     </span>
                   </div>
                 </div>
@@ -669,13 +641,31 @@ const regenerateImages = async () => {
                 </div>
               </div>
 
-              <div className="space-y-3">
+              <div className="space-y-2">
+                <Label>Edit / Finalize Copy</Label>
+                <Textarea
+                  placeholder="Edit the generated content before posting..."
+                  value={editedText || generatedPost?.content?.text || ""}
+                  onChange={(e) => setEditedText(e.target.value)}
+                  className="min-h-[140px]"
+                />
+              </div>
+
+              <div className="space-y-3 grid grid-cols-1 md:grid-cols-2 gap-3">
                 <Button
                   onClick={generateContent}
                   className="w-full bg-blue-600 hover:bg-blue-700"
                   disabled={isGenerating}
                 >
-                  {isGenerating ? "Generating Content..." : "Generate LinkedIn Post"}
+                  {isGenerating ? "Generating Content..." : "Generate Post"}
+                </Button>
+                <Button
+                  onClick={regenerateImages}
+                  className="w-full bg-slate-900 hover:bg-slate-800"
+                  disabled={!accessToken}
+                >
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  Regenerate Images
                 </Button>
               </div>
             </CardContent>
@@ -711,7 +701,7 @@ const regenerateImages = async () => {
 
                     {generatedPost.type === "carousel" ? (
                       <div className="space-y-4">
-                        <p className="text-gray-900 whitespace-pre-line">{generatedPost.content.text}</p>
+                        <p className="text-gray-900 whitespace-pre-line">{editedText || generatedPost.content.text}</p>
 
                         <div className="relative bg-gray-100 rounded-lg p-6 min-h-[200px]">
                           <div className="text-center">
@@ -808,11 +798,11 @@ const regenerateImages = async () => {
                     </Button>
                     <Button
                       onClick={postToReddit}
-                      className="w-full bg-orange-600 hover:bg-orange-700"
-                      disabled={!generatedPost || !redditSubreddit}
+                      className="w-full bg-gray-400 hover:bg-gray-500"
+                      disabled={true}
                     >
                       <ExternalLink className="h-4 w-4 mr-2" />
-                      Post to Reddit
+                      Reddit (disabled)
                     </Button>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
