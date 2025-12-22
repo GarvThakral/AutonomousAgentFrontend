@@ -51,6 +51,29 @@ export default function AutomatedPage() {
   const [logs, setLogs] = useState<string[]>([])
   const [isRoutingOpen, setIsRoutingOpen] = useState(false)
   const [lockedChannel, setLockedChannel] = useState<"auto" | "linkedin" | "instagram">("auto")
+  const [imageType, setImageType] = useState<"normal" | "text">("normal")
+  const [instagramPostType, setInstagramPostType] = useState<"posts" | "stories">("posts")
+  const [imageCount, setImageCount] = useState<number>(3)
+  const [postStep, setPostStep] = useState<string>("Idle")
+  const [postProgress, setPostProgress] = useState<number>(0)
+  const [videoPrompt, setVideoPrompt] = useState("")
+  const [videoUrl, setVideoUrl] = useState("")
+  const [videoStatus, setVideoStatus] = useState("Idle")
+  const [videoProgress, setVideoProgress] = useState(0)
+  const [isVideoGenerating, setIsVideoGenerating] = useState(false)
+  const [isVideoPosting, setIsVideoPosting] = useState(false)
+  const [videoPageId, setVideoPageId] = useState("")
+  const [videoJobId, setVideoJobId] = useState<string | null>(null)
+  const [scriptReady, setScriptReady] = useState(0)
+  const [scriptTotal, setScriptTotal] = useState(0)
+  const [framesReady, setFramesReady] = useState(0)
+  const [framesTotal, setFramesTotal] = useState(0)
+  const videoPollRef = useRef<NodeJS.Timeout | null>(null)
+  const [testVideoUrl, setTestVideoUrl] = useState("")
+  const [testVideoCaption, setTestVideoCaption] = useState("")
+  const [videoCaption, setVideoCaption] = useState("")
+  const [isTestingInstagramVideo, setIsTestingInstagramVideo] = useState(false)
+  const [testStatus, setTestStatus] = useState("Idle")
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const countdownRef = useRef<NodeJS.Timeout | null>(null)
 
@@ -144,6 +167,10 @@ export default function AutomatedPage() {
     () => !!accessToken && isLinkedInConnected,
     [accessToken, isLinkedInConnected]
   )
+  const availableVideoPages = useMemo(
+    () => instagramPages.filter((p) => p.instagram_business_account?.id),
+    [instagramPages]
+  )
 
   const pickNextChannel = () => {
     if (lockedChannel === "linkedin" && isLinkedInReady) return "linkedin"
@@ -160,6 +187,19 @@ export default function AutomatedPage() {
     if (timerRef.current) clearTimeout(timerRef.current)
     if (countdownRef.current) clearInterval(countdownRef.current)
   }
+
+  const clearVideoPoll = () => {
+    if (videoPollRef.current) {
+      clearInterval(videoPollRef.current)
+      videoPollRef.current = null
+    }
+  }
+
+  useEffect(() => {
+    if (!videoPageId && availableVideoPages.length) {
+      setVideoPageId(availableVideoPages[0].id)
+    }
+  }, [availableVideoPages, videoPageId])
 
   const scheduleNext = () => {
     if (timerRef.current) clearTimeout(timerRef.current)
@@ -214,28 +254,49 @@ export default function AutomatedPage() {
     const channel = pickNextChannel()
     if (channel === "instagram" && !isInstagramReady) {
       appendLog(`Skipped Instagram (not ready) for ${row.projectName}`)
+      setPostStep("Instagram not ready")
+      setPostProgress(0)
       setIsPosting(false)
       return
     }
     if (channel === "linkedin" && !isLinkedInReady) {
       appendLog(`Skipped LinkedIn (not ready) for ${row.projectName}`)
+      setPostStep("LinkedIn not ready")
+      setPostProgress(0)
       setIsPosting(false)
       return
     }
     setIsPosting(true)
+    setPostStep("Generating content")
+    setPostProgress(15)
+    appendLog(`Generating post for ${row.projectName}`)
     try {
-      const contentResp = await axios.post(`${API_URL}makepost`, {
-        contentRequirements: row.projectDescription || row.projectName,
+      const contentResp = await axios.post(`${API_URL}makepost/automated`, {
+        projectName: row.projectName,
+        projectDescription: row.projectDescription || row.projectName,
         targetAudience: row.targetAudience,
-        postTone: row.contentTone || "Professional",
+        contentTone: row.contentTone || "Professional",
+        page: row.page,
         context: `Project: ${row.projectName}. Page: ${row.page}.`,
+        imageType,
+        instagramPostType,
       })
+
+      setPostStep("Preparing media")
+      setPostProgress(45)
+      appendLog(`Generated content for ${row.projectName}`)
 
       const slide = [...contentResp.data.content_data.image_instructions]
       const content = [...contentResp.data.image_urls]
       const slides = content.map((c: any, i: number) => ({ title: slide[i], content: c }))
+      const limitedSlides =
+        instagramPostType === "stories" ? slides.slice(0, 1) : slides.slice(0, Math.max(1, imageCount))
       const hashString = contentResp.data.content_data.hashtag_suggestions.join(" ")
       const finalText = `${contentResp.data.content_data.content_draft} ${hashString}`
+
+      setPostStep(`Posting to ${channel}`)
+      setPostProgress(70)
+      appendLog(`Posting to ${channel} for ${row.projectName}`)
 
       if (channel === "linkedin") {
         if (!accessToken) throw new Error("Missing LinkedIn access token")
@@ -243,9 +304,9 @@ export default function AutomatedPage() {
           content_data: {
             ...contentResp.data.content_data,
             text: finalText,
-            slides,
+            slides: limitedSlides,
           },
-          image_urls: slides.map((s) => s.content),
+          image_urls: limitedSlides.map((s) => s.content),
           post_type: "carousel",
           access_token: accessToken,
         })
@@ -257,17 +318,24 @@ export default function AutomatedPage() {
         if (!pageMatch) throw new Error(`No IG page matching "${row.page}" and no fallback pages with IG account`)
         const igBiz = pageMatch.instagram_business_account?.id
         if (!igBiz) throw new Error("Selected page has no linked Instagram Business Account")
+        const igImages = limitedSlides.map((s) => s.content)
         await axios.post(`${API_URL}instagram/publish`, {
           page_token: pageMatch.access_token,
           ig_user_id: igBiz,
-          image_url: slides[0]?.content,
-          caption: finalText,
+          image_urls: igImages,
+          image_url: igImages[0],
+          caption: instagramPostType === "stories" ? "" : finalText,
+          media_type: instagramPostType === "stories" ? "STORIES" : undefined,
         })
       }
+      setPostStep(`Posted to ${channel}`)
+      setPostProgress(100)
       toast({ title: `Posted to ${channel}`, description: `${row.projectName}` })
       appendLog(`Posted ${row.projectName} to ${channel}`)
       setLastChannel(channel)
     } catch (err: any) {
+      setPostStep("Post failed")
+      setPostProgress(0)
       toast({
         title: "Automation post failed",
         description: err?.message || "Check tokens/pages and sheet data.",
@@ -296,6 +364,161 @@ export default function AutomatedPage() {
       {ok ? `${label} Connected` : `${label} Not Connected`}
     </div>
   )
+
+  const generateVideo = async () => {
+    if (!videoPrompt.trim()) {
+      toast({
+        title: "Add a video prompt",
+        description: "Describe the trending video you want to generate.",
+        variant: "destructive",
+      })
+      return
+    }
+    setIsVideoGenerating(true)
+    setVideoStatus("Generating script")
+    setVideoProgress(15)
+    setVideoUrl("")
+    setScriptReady(0)
+    setScriptTotal(0)
+    setFramesReady(0)
+    setFramesTotal(0)
+    clearVideoPoll()
+    try {
+      const { data } = await axios.post(`${API_URL}video/start`, {
+        prompt: videoPrompt.trim(),
+      })
+      setVideoJobId(data.job_id)
+      setVideoStatus("Queued")
+      setVideoProgress(5)
+      videoPollRef.current = setInterval(async () => {
+        try {
+          const statusResp = await axios.get(`${API_URL}video/status`, { params: { job_id: data.job_id } })
+          const job = statusResp.data
+          setVideoStatus(job.status || "Working")
+          setVideoProgress(job.progress || 0)
+          setScriptReady(job.script_ready || 0)
+          setScriptTotal(job.script_total || 0)
+          setFramesReady(job.frames_ready || 0)
+          setFramesTotal(job.frames_total || 0)
+          if (job.status === "ready" && job.video_url) {
+            setVideoUrl(job.video_url)
+            setVideoStatus("Video ready")
+            setVideoProgress(100)
+            clearVideoPoll()
+            toast({
+              title: "Video generated",
+              description: job.captions_applied ? "Captions applied." : "Captions not applied.",
+            })
+          }
+          if (job.status === "failed") {
+            clearVideoPoll()
+            setVideoStatus("Video generation failed")
+            setVideoProgress(0)
+            toast({
+              title: "Video generation failed",
+              description: job.error || "Check API keys and ffmpeg.",
+              variant: "destructive",
+            })
+          }
+        } catch (err) {
+          // ignore transient polling errors
+        }
+      }, 2000)
+    } catch (err: any) {
+      setVideoStatus("Video generation failed")
+      setVideoProgress(0)
+      toast({
+        title: "Video generation failed",
+        description: err?.message || "Check API keys and ffmpeg.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsVideoGenerating(false)
+    }
+  }
+
+  const postVideoToInstagram = async () => {
+    if (!videoUrl) {
+      toast({ title: "Generate a video first", variant: "destructive" })
+      return
+    }
+    if (!availableVideoPages.length) {
+      toast({ title: "No Instagram pages available", description: "Connect Instagram and load pages.", variant: "destructive" })
+      return
+    }
+    const page = availableVideoPages.find((p) => p.id === videoPageId) || availableVideoPages[0]
+    if (!page?.instagram_business_account?.id) {
+      toast({ title: "No IG business account", description: "Select a page with IG linked.", variant: "destructive" })
+      return
+    }
+    setIsVideoPosting(true)
+    setVideoStatus("Posting to Instagram")
+    setVideoProgress(90)
+    try {
+      await axios.post(`${API_URL}instagram/publish-video`, {
+        page_token: page.access_token,
+        ig_user_id: page.instagram_business_account.id,
+        video_url: videoUrl,
+        caption: videoCaption.trim(),
+      })
+      setVideoStatus("Posted to Instagram")
+      setVideoProgress(100)
+      toast({ title: "Video posted", description: page.name })
+    } catch (err: any) {
+      setVideoStatus("Video post failed")
+      setVideoProgress(0)
+      toast({
+        title: "Video post failed",
+        description: err?.message || "Check token/page permissions.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsVideoPosting(false)
+    }
+  }
+
+  const postTestToInstagramVideo = async () => {
+    if (!testVideoUrl.trim()) {
+      toast({ title: "Add a video URL", variant: "destructive" })
+      return
+    }
+    if (!availableVideoPages.length) {
+      toast({ title: "No Instagram pages available", description: "Connect Instagram and load pages.", variant: "destructive" })
+      return
+    }
+    const page = availableVideoPages.find((p) => p.id === videoPageId) || availableVideoPages[0]
+    if (!page?.instagram_business_account?.id) {
+      toast({ title: "No IG business account", description: "Select a page with IG linked.", variant: "destructive" })
+      return
+    }
+    setIsTestingInstagramVideo(true)
+    setTestStatus("Posting to Instagram")
+    try {
+      await axios.post(`${API_URL}instagram/publish-video`, {
+        page_token: page.access_token,
+        ig_user_id: page.instagram_business_account.id,
+        video_url: testVideoUrl.trim(),
+        caption: testVideoCaption.trim(),
+      })
+      setTestStatus("Posted")
+      toast({ title: "Test video posted", description: page.name })
+    } catch (err: any) {
+      setTestStatus("Post failed")
+      toast({
+        title: "Test post failed",
+        description: err?.message || "Check the URL and IG token.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsTestingInstagramVideo(false)
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      clearVideoPoll()
+    }
+  }, [])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
@@ -394,7 +617,42 @@ export default function AutomatedPage() {
                 </div>
               )}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
-                <div className="space-y-1 md:col-span-2">
+                <div className="space-y-1">
+                  <Label className="text-sm font-medium text-slate-700">Image type</Label>
+                  <select
+                    className="w-full border rounded px-3 py-2"
+                    value={imageType}
+                    onChange={(e) => setImageType(e.target.value as "normal" | "text")}
+                  >
+                    <option value="normal">Normal image</option>
+                    <option value="text">Text image</option>
+                  </select>
+                  <p className="text-xs text-slate-500">Text image = quote/typography style.</p>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-sm font-medium text-slate-700">Instagram post type</Label>
+                  <select
+                    className="w-full border rounded px-3 py-2"
+                    value={instagramPostType}
+                    onChange={(e) => setInstagramPostType(e.target.value as "posts" | "stories")}
+                  >
+                    <option value="posts">Posts</option>
+                    <option value="stories">Stories</option>
+                  </select>
+                  <p className="text-xs text-slate-500">Stories generate 9:16 images; no caption.</p>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-sm font-medium text-slate-700">Images per post</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={6}
+                    value={imageCount}
+                    onChange={(e) => setImageCount(Math.min(6, Math.max(1, Number(e.target.value) || 1)))}
+                  />
+                  <p className="text-xs text-slate-500">LinkedIn max 6; Instagram carousel max 10 (we use up to 6).</p>
+                </div>
+                <div className="space-y-1">
                   <Label className="text-sm font-medium text-slate-700">Interval (minutes)</Label>
                   <Input
                     type="number"
@@ -404,10 +662,10 @@ export default function AutomatedPage() {
                   />
                   <p className="text-xs text-slate-500">Posts every N minutes + up to 1 minute jitter.</p>
                 </div>
-                <div className="text-sm text-slate-700">
-                  <p className="font-semibold">Next post in:</p>
-                  <p className="text-lg font-bold text-slate-900">{nextPostEta || "—"}</p>
-                </div>
+              </div>
+              <div className="text-sm text-slate-700">
+                <p className="font-semibold">Next post in:</p>
+                <p className="text-lg font-bold text-slate-900">{nextPostEta || "—"}</p>
               </div>
               <div className="flex gap-3">
                 <Button onClick={triggerPost} disabled={!rows.length || isPosting} className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800">
@@ -425,6 +683,19 @@ export default function AutomatedPage() {
                     Start automation
                   </Button>
                 )}
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs text-slate-600">
+                  <span>Post progress</span>
+                  <span>{postProgress}%</span>
+                </div>
+                <div className="h-2 w-full rounded-full bg-slate-200">
+                  <div
+                    className="h-2 rounded-full bg-slate-900 transition-all"
+                    style={{ width: `${postProgress}%` }}
+                  />
+                </div>
+                <p className="text-xs text-slate-600">Step: {postStep}</p>
               </div>
             </CardContent>
           </Card>
@@ -479,6 +750,132 @@ export default function AutomatedPage() {
             </CardContent>
           </Card>
         </div>
+
+        <Card className="shadow-md">
+          <CardHeader>
+            <CardTitle>Instagram Video</CardTitle>
+            <CardDescription>Generate a trending short video and post it to Instagram.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-1">
+              <Label className="text-sm font-medium text-slate-700">Video prompt</Label>
+              <Textarea
+                value={videoPrompt}
+                onChange={(e) => setVideoPrompt(e.target.value)}
+                placeholder="Describe the trending video idea, hook, and vibe..."
+                className="min-h-[100px]"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-sm font-medium text-slate-700">Caption</Label>
+              <Textarea
+                value={videoCaption}
+                onChange={(e) => setVideoCaption(e.target.value)}
+                placeholder="Optional caption to post with the video..."
+                className="min-h-[80px]"
+              />
+            </div>
+            <div className="grid md:grid-cols-2 gap-3 items-end">
+              <div className="space-y-1">
+                <Label className="text-sm font-medium text-slate-700">Instagram page</Label>
+                <select
+                  className="w-full border rounded px-3 py-2"
+                  value={videoPageId}
+                  onChange={(e) => setVideoPageId(e.target.value)}
+                >
+                  {availableVideoPages.length === 0 ? (
+                    <option value="">No IG pages available</option>
+                  ) : (
+                    availableVideoPages.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))
+                  )}
+                </select>
+                <p className="text-xs text-slate-500">Uses the selected page’s IG business account.</p>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  onClick={generateVideo}
+                  disabled={isVideoGenerating}
+                  className="bg-slate-900 hover:bg-slate-800"
+                >
+                  {isVideoGenerating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                  Generate video
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={postVideoToInstagram}
+                  disabled={!videoUrl || isVideoPosting}
+                >
+                  {isVideoPosting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                  Post to Instagram
+                </Button>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs text-slate-600">
+                <span>Video progress</span>
+                <span>{videoProgress}%</span>
+              </div>
+              <div className="h-2 w-full rounded-full bg-slate-200">
+                <div
+                  className="h-2 rounded-full bg-blue-600 transition-all"
+                  style={{ width: `${videoProgress}%` }}
+                />
+              </div>
+              <p className="text-xs text-slate-600">Status: {videoStatus}</p>
+              <div className="flex flex-wrap gap-3 text-xs text-slate-600">
+                <span>Script: {scriptReady}/{scriptTotal || "?"}</span>
+                <span>Frames: {framesReady}/{framesTotal || "?"}</span>
+              </div>
+            </div>
+            <div className="rounded-lg border bg-white p-3">
+              {videoUrl ? (
+                <video controls src={videoUrl} className="w-full rounded-md" />
+              ) : (
+                <p className="text-sm text-slate-600">No video generated yet.</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-md">
+          <CardHeader>
+            <CardTitle>Instagram Video URL Test</CardTitle>
+            <CardDescription>Post a direct video URL to Instagram to validate reels publishing.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-1">
+              <Label className="text-sm font-medium text-slate-700">Video URL</Label>
+              <Input
+                value={testVideoUrl}
+                onChange={(e) => setTestVideoUrl(e.target.value)}
+                placeholder="https://..."
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-sm font-medium text-slate-700">Caption (optional)</Label>
+              <Textarea
+                value={testVideoCaption}
+                onChange={(e) => setTestVideoCaption(e.target.value)}
+                placeholder="Short test caption..."
+              />
+            </div>
+            <div className="flex items-center gap-3">
+              <Button
+                onClick={postTestToInstagramVideo}
+                disabled={isTestingInstagramVideo}
+                className="bg-slate-900 hover:bg-slate-800"
+              >
+                {isTestingInstagramVideo ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                Post to Instagram
+              </Button>
+              <span className="text-xs text-slate-600">Status: {testStatus}</span>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   )
